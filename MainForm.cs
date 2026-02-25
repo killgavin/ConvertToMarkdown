@@ -27,7 +27,7 @@ public partial class MainForm : Form
         using var dialog = new OpenFileDialog
         {
             Title = "選取 Word 檔案",
-            Filter = "Word 文件 (*.docx)|*.docx",
+            Filter = "所有 Word 文件 (*.docx;*.doc)|*.docx;*.doc|Word 文件 (*.docx)|*.docx|Word 97-2003 文件 (*.doc)|*.doc",
             CheckFileExists = true
         };
 
@@ -57,10 +57,12 @@ public partial class MainForm : Form
             return;
         }
 
-        // 驗證副檔名必須為 .docx
-        if (!sourceFilePath.EndsWith(".docx", StringComparison.OrdinalIgnoreCase))
+        // 驗證副檔名必須為 .docx 或 .doc
+        string extension = Path.GetExtension(sourceFilePath);
+        if (!extension.Equals(".docx", StringComparison.OrdinalIgnoreCase)
+         && !extension.Equals(".doc", StringComparison.OrdinalIgnoreCase))
         {
-            MessageBox.Show("僅支援 .docx 格式的 Word 檔案。", "格式錯誤",
+            MessageBox.Show("僅支援 .docx 及 .doc 格式的 Word 檔案。", "格式錯誤",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }

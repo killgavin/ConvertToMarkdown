@@ -4,12 +4,14 @@ using HapDoc = HtmlAgilityPack.HtmlDocument;
 using HapNode = HtmlAgilityPack.HtmlNode;
 using Mammoth;
 using ReverseMarkdown;
+using WordApp = Microsoft.Office.Interop.Word.Application;
+using WdSaveFormat = Microsoft.Office.Interop.Word.WdSaveFormat;
 
 namespace ConvertToMarkdown;
 
 /// <summary>
-/// 轉換服務實作 - 負責將 Word (.docx) 檔案轉換為 GitHub Flavored Markdown (GFM) 格式。
-/// 轉換流程：Mammoth 解析 Docx → 提取圖片 → 正規化表格 → ReverseMarkdown 產生 .md。
+/// 轉換服務實作 - 負責將 Word (.docx / .doc) 檔案轉換為 GitHub Flavored Markdown (GFM) 格式。
+/// 轉換流程：（若為 .doc 則先透過 Word COM Interop 轉為 .docx）→ Mammoth 解析 Docx → 提取圖片 → 正規化表格 → ReverseMarkdown 產生 .md。
 /// </summary>
 public class ConverterService : IConverterService
 {
@@ -27,8 +29,19 @@ public class ConverterService : IConverterService
         // 使用 Task.Run 將整個 I/O 密集工作移至執行緒集區，確保 UI 執行緒不被阻塞
         return await Task.Run(() =>
         {
+            string? tempDocxPath = null;
             try
             {
+                // === 步驟 0（條件性）：若為 .doc 格式，透過 Word COM Interop 轉為臨時 .docx ===
+                bool isDoc = sourceFilePath.EndsWith(".doc", StringComparison.OrdinalIgnoreCase)
+                          && !sourceFilePath.EndsWith(".docx", StringComparison.OrdinalIgnoreCase);
+                if (isDoc)
+                {
+                    progress.Report("▶ [0/6] 偵測到 .doc 格式，使用 Word COM Interop 轉換為 .docx...");
+                    tempDocxPath = ConvertDocToDocx(sourceFilePath, progress);
+                    sourceFilePath = tempDocxPath;
+                }
+
                 // === 步驟 1：驗證來源檔案是否存在 ===
                 progress.Report("▶ [1/6] 驗證來源檔案...");
                 if (!File.Exists(sourceFilePath))
@@ -103,7 +116,59 @@ public class ConverterService : IConverterService
                     ErrorMessage = $"轉換過程發生例外：{ex.GetType().Name} - {ex.Message}"
                 };
             }
+            finally
+            {
+                // 清除預轉產生的臨時 .docx 檔案
+                if (tempDocxPath != null && File.Exists(tempDocxPath))
+                {
+                    try { File.Delete(tempDocxPath); }
+                    catch { /* 忽略清除失敗 */ }
+                }
+            }
         });
+    }
+
+    /// <summary>
+    /// 透過 Microsoft Word COM Interop 將 .doc 檔案轉換為臨時 .docx 檔案。
+    /// 需要使用者電腦已安裝 Microsoft Word。
+    /// </summary>
+    /// <param name="docPath">.doc 檔案的完整路徑。</param>
+    /// <param name="progress">進度回報介面。</param>
+    /// <returns>轉換產生的臨時 .docx 檔案路徑。</returns>
+    /// <exception cref="InvalidOperationException">無法啟動 Microsoft Word 時擲出。</exception>
+    private static string ConvertDocToDocx(string docPath, IProgress<string> progress)
+    {
+        WordApp? wordApp = null;
+        Microsoft.Office.Interop.Word.Document? wordDoc = null;
+        try
+        {
+            wordApp = new WordApp { Visible = false, DisplayAlerts = Microsoft.Office.Interop.Word.WdAlertLevel.wdAlertsNone };
+            wordDoc = wordApp.Documents.Open(docPath, ReadOnly: true);
+
+            string tempDocxPath = Path.Combine(Path.GetTempPath(), $"{Path.GetFileNameWithoutExtension(docPath)}_{Guid.NewGuid():N}.docx");
+            wordDoc.SaveAs2(tempDocxPath, WdSaveFormat.wdFormatXMLDocument, CompatibilityMode: (int)Microsoft.Office.Interop.Word.WdCompatibilityMode.wdWord2013);
+
+            progress.Report($"  ✔ .doc → .docx 轉換完成：{Path.GetFileName(tempDocxPath)}");
+            return tempDocxPath;
+        }
+        catch (System.Runtime.InteropServices.COMException ex)
+        {
+            throw new InvalidOperationException(
+                $"無法啟動 Microsoft Word 進行 .doc 轉換。請確認已安裝 Microsoft Word。\n詳細錯誤：{ex.Message}", ex);
+        }
+        finally
+        {
+            if (wordDoc != null)
+            {
+                wordDoc.Close(false);
+                System.Runtime.InteropServices.Marshal.ReleaseComObject(wordDoc);
+            }
+            if (wordApp != null)
+            {
+                wordApp.Quit(false);
+                System.Runtime.InteropServices.Marshal.ReleaseComObject(wordApp);
+            }
+        }
     }
 
     /// <summary>

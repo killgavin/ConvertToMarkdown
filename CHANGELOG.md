@@ -4,6 +4,43 @@
 
 ---
 
+## [1.1.0] — 2026-02-25
+
+### 提交資訊
+
+```
+feat: 支援 .doc (Word 97-2003) 格式轉換（透過 Word COM Interop 預轉為 .docx）
+```
+
+**分支**：`copilot/add-winform-file-conversion-tool`
+
+---
+
+### 新增功能 (Features)
+
+#### 📄 .doc 格式支援
+
+- 新增 **步驟 0（條件性）**：偵測到 `.doc` 檔案時，自動透過 Microsoft Word COM Interop 轉換為臨時 `.docx` 再進入現有轉換管線
+- 新增 `ConverterService.ConvertDocToDocx()` 私有方法，負責 COM Interop 轉換遏輯
+- 臨時檔案於轉換完成後自動清除（`finally` 區塊）
+- 當未安裝 Microsoft Word 時，捕捉 `COMException` 並給出友善提示
+
+#### 🖥 UI 調整
+
+- `OpenFileDialog` 篩選器新增 `.doc` 格式支援
+- 副檔名驗證放寬為接受 `.docx` 及 `.doc`
+
+#### 📦 專案設定
+
+- `ConvertToMarkdown.csproj` 新增 `Microsoft.Office.Interop.Word` NuGet 套件參考
+
+#### 📝 系統需求變更
+
+- 轉換 `.doc` 檔案時，使用者電腦需安裝 Microsoft Word
+- 轉換 `.docx` 檔案時無額外需求（行為與 v1.0.0 完全相同）
+
+---
+
 ## [1.0.0] — 2026-02-25
 
 ### 提交資訊
