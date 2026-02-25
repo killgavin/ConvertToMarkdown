@@ -84,7 +84,7 @@ feat: 實作 Word 轉 Markdown WinForms 工具 (階段 0-3)
 - 確認指定路徑的 `.docx` 檔案確實存在，提前回傳友善錯誤
 
 **步驟 2 — 建立輸出資料夾**
-- 於來源檔案所在目錄下自動建立 `MD/` 子資料夾
+- 於來源檔案所在目錄下自動建立以主檔名命名的子資料夾（例如 `報告.docx` → `報告/`）
 
 **步驟 3 — Mammoth 解析 Word**
 - 使用 `Mammoth.DocumentConverter.ConvertToHtml(path)` 將 `.docx` 轉為 HTML 字串
@@ -92,7 +92,7 @@ feat: 實作 Word 轉 Markdown WinForms 工具 (階段 0-3)
 
 **步驟 4 — 圖片提取與儲存** (`ExtractAndSaveImages`)
 - 以 Compiled Regex 掃描 `src="data:image/TYPE;base64,DATA"` 格式的嵌入圖片
-- 解碼 base64 → 以原始二進位寫入 `MD/` 資料夾（命名規則：`{主檔名}_圖片_{序號三位數}.{副檔名}`）
+- 解碼 base64 → 以原始二進位寫入輸出資料夾（命名規則：`{主檔名}_圖片_{序號三位數}.{副檔名}`）
 - 將 `src` 屬性值替換為相對路徑，確保 Markdown 可正確引用
 - 支援副檔名：`jpg`、`png`、`gif`、`webp`、`svg`
 
@@ -171,14 +171,24 @@ dotnet build -c Release
 
 ### 輸出結構範例
 
+**Word：**
 ```
 📁 my-docs/
 ├── 報告.docx                   ← 來源檔案
-└── 📁 MD/
+└── 📁 報告/
     ├── 報告.md                 ← 轉換產出的 Markdown 檔案
     ├── 報告_圖片_001.png        ← 從文件提取的圖片
     ├── 報告_圖片_002.png
     └── 報告_圖片_003.jpg
+```
+
+**Excel：**
+```
+📁 my-docs/
+├── 報告.xlsx                   ← 來源檔案
+└── 📁 報告/
+    ├── 報告_Sheet1.md          ← 各工作表獨立輸出
+    └── 報告_Sheet2.md
 ```
 
 ---
