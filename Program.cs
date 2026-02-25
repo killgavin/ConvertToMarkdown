@@ -11,6 +11,9 @@ static class Program
     [STAThread]
     static void Main()
     {
+        // 註冊字碼頁編碼提供者，供 ExcelDataReader 讀取 .xls (BIFF) 格式時使用
+        System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+
         // 套用應用程式組態（高 DPI、視覺樣式等預設設定）
         ApplicationConfiguration.Initialize();
 
