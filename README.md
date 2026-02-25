@@ -1,6 +1,6 @@
 # ConvertToMarkdown
 
-> 將 Word (.docx / .doc) 檔案轉換為 Markdown 文件的 WinForms 桌面工具
+> 將 Word (.docx / .doc) 及 Excel (.xlsx / .xls) 檔案轉換為 Markdown 文件的 WinForms 桌面工具
 
 [![.NET](https://img.shields.io/badge/.NET-8.0--windows-512BD4)](https://dotnet.microsoft.com/)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -10,6 +10,7 @@
 ## 功能特色
 
 - 📄 **一鍵轉換**：選取 `.docx` 或 `.doc` 檔案後，點擊「開始轉換」即可產出 Markdown 文件
+- 📊 **Excel 支援**：選取 `.xlsx` 或 `.xls` 檔案，每個工作表獨立輸出為 GFM 表格格式的 Markdown 檔案
 - 🖼 **圖片自動提取**：將 Word 內嵌圖片儲存為獨立圖檔，Markdown 使用相對路徑引用
 - 📊 **表格合併儲存格處理**：自動展開 `colspan`/`rowspan`，確保符合 Markdown 表格語法
 - ⚡ **非同步執行**：轉換過程在背景執行緒進行，UI 不凍結
@@ -23,7 +24,7 @@
 |---|---|
 | 作業系統 | Windows 10 / 11（64-bit） |
 | 執行環境 | [.NET 8.0 Desktop Runtime](https://dotnet.microsoft.com/en-us/download/dotnet/8.0) |
-| 輸入格式 | Word 2007 以上 (`.docx`) / Word 97-2003 (`.doc`) |
+| 輸入格式 | Word 2007 以上 (`.docx`) / Word 97-2003 (`.doc`) / Excel (`.xlsx` / `.xls`) |
 | .doc 支援 | 需安裝 Microsoft Word（透過 COM Interop 轉換） |
 
 ---
@@ -33,17 +34,27 @@
 1. 啟動程式 (`ConvertToMarkdown.exe`)
 2. 點擊「**瀏覽...**」選取要轉換的 `.docx` 或 `.doc` 檔案
 3. 點擊「**開始轉換**」
-4. 轉換完成後，至來源檔案所在目錄的 `MD/` 資料夾查看結果
+4. 轉換完成後，至來源檔案所在目錄中與主檔名同名的資料夾查看結果
 
 ### 輸出結構
 
+**Word 轉換範例：**
 ```
 📁 your-folder/
 ├── document.docx          ← 來源 Word 檔案
-└── 📁 MD/
+└── 📁 document/
     ├── document.md        ← 轉換產出的 Markdown 文件
     ├── document_圖片_001.png
     └── document_圖片_002.jpg
+```
+
+**Excel 轉換範例：**
+```
+📁 your-folder/
+├── Report.xlsx            ← 來源 Excel 檔案
+└── 📁 Report/
+    ├── Report_Sales.md    ← 工作表「Sales」的 Markdown 表格
+    └── Report_Inventory.md← 工作表「Inventory」的 Markdown 表格
 ```
 
 ---
@@ -69,6 +80,7 @@ dotnet run
 | [Mammoth](https://github.com/mwilliamson/dotnet-mammoth) | 1.3.1 | DOCX → HTML（無需安裝 Microsoft Office）|
 | [ReverseMarkdown](https://github.com/mysticmind/reversemarkdown-net) | 4.6.0 | HTML → GitHub Flavored Markdown |
 | [HtmlAgilityPack](https://html-agility-pack.net/) | 1.11.72 | HTML DOM 解析，用於表格正規化 |
+| [ExcelDataReader.DataSet](https://github.com/ExcelDataReader/ExcelDataReader) | 3.8.0 | Excel (.xlsx/.xls) 讀取與 DataSet 轉換 |
 | Microsoft.Office.Interop.Word | COM | .doc → .docx 預轉換（需安裝 Word） |
 
 ---
