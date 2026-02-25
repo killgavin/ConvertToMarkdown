@@ -53,11 +53,11 @@ public class ConverterService : IConverterService
                     };
                 }
 
-                // === 步驟 2：建立輸出資料夾 MD ===
-                // 在來源檔案所在目錄下建立 MD 子資料夾，用於存放 .md 及圖檔
+                // === 步驟 2：建立輸出資料夾（以來源檔案主檔名命名）===
+                // 在來源檔案所在目錄下建立與主檔名同名的子資料夾，用於存放 .md 及圖檔
                 string sourceDir = Path.GetDirectoryName(sourceFilePath)!;
                 string fileBaseName = Path.GetFileNameWithoutExtension(sourceFilePath);
-                string outputDir = Path.Combine(sourceDir, "MD");
+                string outputDir = Path.Combine(sourceDir, fileBaseName);
                 Directory.CreateDirectory(outputDir);
                 progress.Report($"▶ [2/6] 輸出資料夾：{outputDir}");
 

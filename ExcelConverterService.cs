@@ -42,11 +42,11 @@ public class ExcelConverterService : IExcelConverterService
                     return results;
                 }
 
-                // === 步驟 2：建立輸出資料夾 MD ===
-                // 在來源檔案所在目錄下建立 MD 子資料夾，用於存放各工作表的 .md 檔案
+                // === 步驟 2：建立輸出資料夾（以來源檔案主檔名命名）===
+                // 在來源檔案所在目錄下建立與主檔名同名的子資料夾，用於存放各工作表的 .md 檔案
                 string sourceDir = Path.GetDirectoryName(sourceFilePath)!;
                 string excelBaseName = Path.GetFileNameWithoutExtension(sourceFilePath);
-                string outputDir = Path.Combine(sourceDir, "MD");
+                string outputDir = Path.Combine(sourceDir, excelBaseName);
                 Directory.CreateDirectory(outputDir);
                 progress.Report($"▶ [2/4] 輸出資料夾：{outputDir}");
 
