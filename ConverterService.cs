@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using HapDoc = HtmlAgilityPack.HtmlDocument;
@@ -53,11 +54,11 @@ public class ConverterService : IConverterService
                     };
                 }
 
-                // === 步驟 2：建立輸出資料夾 MD ===
-                // 在來源檔案所在目錄下建立 MD 子資料夾，用於存放 .md 及圖檔
+                // === 步驟 2：建立輸出資料夾（依來源檔名命名） ===
+                // 在來源檔案所在目錄下建立以檔名命名的子資料夾，用於存放 .md 及圖檔
                 string sourceDir = Path.GetDirectoryName(sourceFilePath)!;
                 string fileBaseName = Path.GetFileNameWithoutExtension(sourceFilePath);
-                string outputDir = Path.Combine(sourceDir, "MD");
+                string outputDir = Path.Combine(sourceDir, fileBaseName);
                 Directory.CreateDirectory(outputDir);
                 progress.Report($"▶ [2/6] 輸出資料夾：{outputDir}");
 
@@ -177,7 +178,7 @@ public class ConverterService : IConverterService
     /// </summary>
     /// <param name="html">Mammoth 產生的原始 HTML 字串（含 base64 圖片）。</param>
     /// <param name="outputDir">圖片輸出目錄的完整路徑。</param>
-    /// <param name="fileBaseName">來源 Word 檔案的主檔名，用於圖片命名前綴。</param>
+    /// <param name="fileBaseName">來源 Word 檔案的主檔名（未使用於圖片命名，保留參數以供記錄）。</param>
     /// <param name="imageCount">圖片計數器（傳址參數），函式結束後記錄已儲存的圖片總數。</param>
     /// <param name="progress">進度回報介面。</param>
     /// <returns>圖片 src 已替換為相對路徑的 HTML 字串。</returns>
@@ -213,16 +214,33 @@ public class ConverterService : IConverterService
                 _               => imageType.Replace("+", "_")
             };
 
-            // 命名規則：{主檔名}_圖片_{序號三位數}.{副檔名}
-            string imageFileName = $"{fileBaseName}_圖片_{localCount:D3}.{extension}";
+            // 命名規則：以圖片內容 SHA256 雜湊值前 16 碼命名，確保唯一且不受來源檔名影響
+            byte[] imageBytes;
+            try
+            {
+                imageBytes = Convert.FromBase64String(base64Data);
+            }
+            catch (Exception ex)
+            {
+                progress.Report($"  ✘ 圖片解碼失敗（第 {localCount} 張）：{ex.Message}");
+                return match.Value;
+            }
+            string hash = Convert.ToHexString(SHA256.HashData(imageBytes))[..16].ToLowerInvariant();
+            string imageFileName = $"img_{hash}.{extension}";
             string imageFilePath = Path.Combine(outputDir, imageFileName);
 
             try
             {
-                // 解碼 base64 並以高品質（原始二進位）寫入磁碟
-                byte[] imageBytes = Convert.FromBase64String(base64Data);
-                File.WriteAllBytes(imageFilePath, imageBytes);
-                progress.Report($"  ✔ 圖片已儲存：{imageFileName}（{imageBytes.Length:N0} bytes）");
+                // 將圖片二進位寫入磁碟（若同雜湊圖片已存在則跳過）
+                if (!File.Exists(imageFilePath))
+                {
+                    File.WriteAllBytes(imageFilePath, imageBytes);
+                    progress.Report($"  ✔ 圖片已儲存：{imageFileName}（{imageBytes.Length:N0} bytes）");
+                }
+                else
+                {
+                    progress.Report($"  ✔ 圖片已存在（重複引用）：{imageFileName}");
+                }
             }
             catch (Exception ex)
             {
