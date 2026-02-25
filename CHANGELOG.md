@@ -92,7 +92,7 @@ feat: 實作 Word 轉 Markdown WinForms 工具 (階段 0-3)
 
 **步驟 4 — 圖片提取與儲存** (`ExtractAndSaveImages`)
 - 以 Compiled Regex 掃描 `src="data:image/TYPE;base64,DATA"` 格式的嵌入圖片
-- 解碼 base64 → 以原始二進位寫入輸出資料夾（命名規則：`{主檔名}_圖片_{序號三位數}.{副檔名}`）
+- 解碼 base64 → 以原始二進位寫入輸出資料夾（命名規則：`img_{SHA256雜湊值前16碼}.{副檔名}`）
 - 將 `src` 屬性值替換為相對路徑，確保 Markdown 可正確引用
 - 支援副檔名：`jpg`、`png`、`gif`、`webp`、`svg`
 
@@ -115,8 +115,10 @@ feat: 實作 Word 轉 Markdown WinForms 工具 (階段 0-3)
 
 | 方法 | 說明 |
 |---|---|
-| `BtnBrowse_Click` | 開啟 `OpenFileDialog`，篩選 `*.docx`，將路徑填入文字方塊並啟用轉換按鈕 |
+| `BtnBrowse_Click` | 開啟 `OpenFileDialog`，篩選 `*.docx;*.doc`，將路徑填入文字方塊並啟用轉換按鈕 |
 | `BtnConvert_Click` | 非同步事件處理（`async void`）；轉換中停用全部控制項防止重複觸發；以 `Progress<string>` 串接日誌輸出 |
+| `BtnBrowseExcel_Click` | 開啟 `OpenFileDialog`，篩選 `*.xlsx;*.xls`，將路徑填入 Excel 文字方塊並啟用轉換按鈕 |
+| `BtnConvertExcel_Click` | 非同步事件處理，呼叫 Excel 轉換服務，處理多工作表結果統計 |
 | `AppendLog` | 安全地將訊息附加至 `RichTextBox`，包含 `InvokeRequired` 跨執行緒保護，並自動捲動至最新行 |
 | `SetControlsEnabled` | 統一管理「瀏覽」、「開始轉換」按鈕與路徑輸入框的啟用狀態 |
 
@@ -127,6 +129,10 @@ feat: 實作 Word 轉 Markdown WinForms 工具 (階段 0-3)
 │ 來源 Word 檔案：                      │
 │ [─── 路徑文字方塊 ───────] [瀏覽...]  │
 │ [開始轉換]                            │
+│                                      │
+│ 來源 Excel 檔案：                     │
+│ [─── 路徑文字方塊 ───────] [瀏覽...]  │
+│ [轉換 Excel]                          │
 ├──────────────────────────────────────┤
 │ 執行日誌：                            │
 │ ┌──────────────────────────────────┐ │
@@ -135,7 +141,7 @@ feat: 實作 Word 轉 Markdown WinForms 工具 (階段 0-3)
 └──────────────────────────────────────┘
 ```
 
-- 視窗固定大小（560 × 420），不可最大化
+- 視窗固定大小（560 × 520），不可最大化
 - 全程使用「微軟正黑體 UI」字型，確保正體中文顯示正確
 - 日誌區使用深色背景（RGB 30,30,30）搭配淺色文字，提升可讀性
 
@@ -150,7 +156,7 @@ feat: 實作 Word 轉 Markdown WinForms 工具 (階段 0-3)
 
 | 套件名稱 | 版本 | 用途 |
 |---|---|---|
-| `Mammoth` | 1.3.1（由 1.0.0 解析） | DOCX → HTML 轉換（無需安裝 Microsoft Office） |
+| `Mammoth` | 1.3.1 | DOCX → HTML 轉換（無需安裝 Microsoft Office） |
 | `ReverseMarkdown` | 4.6.0 | HTML → GitHub Flavored Markdown 轉換 |
 | `HtmlAgilityPack` | 1.11.72 | HTML DOM 解析與表格節點操作 |
 
@@ -177,9 +183,9 @@ dotnet build -c Release
 ├── 報告.docx                   ← 來源檔案
 └── 📁 報告/
     ├── 報告.md                 ← 轉換產出的 Markdown 檔案
-    ├── 報告_圖片_001.png        ← 從文件提取的圖片
-    ├── 報告_圖片_002.png
-    └── 報告_圖片_003.jpg
+    ├── img_a1b2c3d4e5f67890.png  ← 從文件提取的圖片
+    ├── img_f0e1d2c3b4a59876.png
+    └── img_9a8b7c6d5e4f3210.jpg
 ```
 
 **Excel：**

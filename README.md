@@ -32,8 +32,8 @@
 ## 使用方式
 
 1. 啟動程式 (`ConvertToMarkdown.exe`)
-2. 點擊「**瀏覽...**」選取要轉換的 `.docx` 或 `.doc` 或 `.xlsx` 或 `.xls` 檔案
-3. 點擊「**開始轉換**」
+2. **Word 轉換**：在上方「來源 Word 檔案」區塊，點擊「**瀏覽...**」選取 `.docx` 或 `.doc` 檔案，再點擊「**開始轉換**」
+3. **Excel 轉換**：在下方「來源 Excel 檔案」區塊，點擊「**瀏覽...**」選取 `.xlsx` 或 `.xls` 檔案，再點擊「**轉換 Excel**」
 4. 轉換完成後，至來源檔案所在目錄中與主檔名同名的資料夾查看結果
 
 ### 輸出結構
@@ -44,8 +44,8 @@
 ├── document.docx          ← 來源 Word 檔案
 └── 📁 document/
     ├── document.md        ← 轉換產出的 Markdown 文件
-    ├── document_圖片_001.png
-    └── document_圖片_002.jpg
+    ├── img_a1b2c3d4e5f67890.png
+    └── img_f0e1d2c3b4a59876.jpg
 ```
 
 **Excel 轉換範例：**
@@ -81,7 +81,7 @@ dotnet run
 | [ReverseMarkdown](https://github.com/mysticmind/reversemarkdown-net) | 4.6.0 | HTML → GitHub Flavored Markdown |
 | [HtmlAgilityPack](https://html-agility-pack.net/) | 1.11.72 | HTML DOM 解析，用於表格正規化 |
 | [ExcelDataReader.DataSet](https://github.com/ExcelDataReader/ExcelDataReader) | 3.8.0 | Excel (.xlsx/.xls) 讀取與 DataSet 轉換 |
-| Microsoft.Office.Interop.Word | COM | .doc → .docx 預轉換（需安裝 Word） |
+| Microsoft.Office.Interop.Word | 15.0.4797.1004 | .doc → .docx 預轉換（需安裝 Word） |
 
 ---
 
