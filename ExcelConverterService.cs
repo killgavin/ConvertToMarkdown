@@ -1,12 +1,12 @@
-using System.Data;
 using System.Text;
-using ExcelDataReader;
+using ExcelApp = Microsoft.Office.Interop.Excel.Application;
 
 namespace ConvertToMarkdown;
 
 /// <summary>
 /// Excel 轉換服務實作 - 負責將 Excel (.xlsx / .xls) 檔案的每個工作表
-/// 轉換為 GitHub Flavored Markdown (GFM) 標準表格格式，並各自輸出為獨立 .md 檔案。
+/// 透過 Excel COM Interop 讀取資料，並轉換為 GitHub Flavored Markdown (GFM) 標準表格格式，
+/// 各工作表輸出為獨立 .md 檔案。
 /// </summary>
 public class ExcelConverterService : IExcelConverterService
 {
@@ -28,6 +28,8 @@ public class ExcelConverterService : IExcelConverterService
         {
             var results = new List<ExcelConversionResult>();
 
+            ExcelApp? excelApp = null;
+            Microsoft.Office.Interop.Excel.Workbook? workbook = null;
             try
             {
                 // === 步驟 1：驗證來源檔案是否存在 ===
@@ -43,77 +45,49 @@ public class ExcelConverterService : IExcelConverterService
                 }
 
                 // === 步驟 2：建立輸出資料夾（以來源檔案主檔名命名）===
-                // 在來源檔案所在目錄下建立與主檔名同名的子資料夾，用於存放各工作表的 .md 檔案
                 string sourceDir = Path.GetDirectoryName(sourceFilePath)!;
                 string excelBaseName = Path.GetFileNameWithoutExtension(sourceFilePath);
                 string outputDir = Path.Combine(sourceDir, excelBaseName);
                 Directory.CreateDirectory(outputDir);
                 progress.Report($"▶ [2/4] 輸出資料夾：{outputDir}");
 
-                // === 步驟 3：使用 ExcelDataReader 讀取所有工作表 ===
-                // ExcelDataReader 要求先註冊字碼頁編碼提供者（支援 .xls 的 BIFF 格式）
-                // 此呼叫幂等，重複呼叫無副作用
-                Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+                // === 步驟 3：透過 Excel COM Interop 開啟活頁簿 ===
+                progress.Report("▶ [3/4] Excel COM Interop 開啟活頁簿中...");
 
-                progress.Report("▶ [3/4] ExcelDataReader 讀取工作表中...");
-
-                DataSet dataSet;
                 try
                 {
-                    // 以共用讀取模式開啟 Excel 檔案，允許其他程式同時讀取（但若被獨占寫入鎖定則仍會失敗）
-                    using var stream = new FileStream(
+                    excelApp = new ExcelApp { Visible = false, DisplayAlerts = false };
+                    workbook = excelApp.Workbooks.Open(
                         sourceFilePath,
-                        FileMode.Open,
-                        FileAccess.Read,
-                        FileShare.ReadWrite);
-
-                    // 根據副檔名選擇對應的讀取器：
-                    // .xlsx → OpenXml 格式；.xls → BIFF (Binary Interchange File Format) 格式
-                    using IExcelDataReader reader = Path.GetExtension(sourceFilePath)
-                        .Equals(".xls", StringComparison.OrdinalIgnoreCase)
-                        ? ExcelReaderFactory.CreateBinaryReader(stream)
-                        : ExcelReaderFactory.CreateOpenXmlReader(stream);
-
-                    // 將 Excel 全部工作表讀入 DataSet，
-                    // UseHeaderRow = false 表示不自動以第一列作為欄位名稱，
-                    // 改由後續邏輯手動處理表頭（第一列視為表頭）
-                    var config = new ExcelDataSetConfiguration
-                    {
-                        ConfigureDataTable = _ => new ExcelDataTableConfiguration
-                        {
-                            UseHeaderRow = false
-                        }
-                    };
-                    dataSet = reader.AsDataSet(config);
+                        ReadOnly: true,
+                        UpdateLinks: 0);
                 }
-                catch (IOException ioEx)
+                catch (System.Runtime.InteropServices.COMException ex)
                 {
-                    // 檔案被其他程式開啟中（共用違規）或其他 I/O 錯誤
                     results.Add(new ExcelConversionResult
                     {
                         IsSuccess = false,
-                        ErrorMessage = $"無法開啟 Excel 檔案，請確認檔案未被其他程式佔用。\n詳細錯誤：{ioEx.Message}"
+                        ErrorMessage = $"無法啟動 Microsoft Excel 進行轉換。請確認已安裝 Microsoft Excel。\n詳細錯誤：{ex.Message}"
                     });
                     return results;
                 }
 
-                // === 步驟 4：逐一轉換每個工作表為 Markdown 表格 ===
-                progress.Report($"▶ [4/4] 共偵測到 {dataSet.Tables.Count} 個工作表，開始逐一轉換...");
+                int sheetCount = workbook.Worksheets.Count;
 
-                // 遍歷 DataSet 中的每一個 DataTable（對應 Excel 的每一個工作表）
-                foreach (DataTable table in dataSet.Tables)
+                // === 步驟 4：逐一轉換每個工作表為 Markdown 表格 ===
+                progress.Report($"▶ [4/4] 共偵測到 {sheetCount} 個工作表，開始逐一轉換...");
+
+                foreach (Microsoft.Office.Interop.Excel.Worksheet worksheet in workbook.Worksheets)
                 {
-                    // 取得工作表名稱（即 DataTable.TableName，由 ExcelDataReader 自動帶入）
-                    string sheetName = table.TableName;
+                    string sheetName = worksheet.Name;
                     progress.Report($"  ▷ 正在處理工作表：【{sheetName}】");
 
                     try
                     {
-                        // 將 DataTable 轉換為 GFM Markdown 表格字串
-                        string markdownContent = ConvertDataTableToMarkdown(table, progress);
+                        // 讀取工作表使用範圍的資料
+                        string markdownContent = ConvertWorksheetToMarkdown(worksheet, progress);
 
                         // 命名規則：{Excel主檔名}_{工作表名稱}.md
-                        // 移除工作表名稱中對檔案系統不合法的字元，避免建檔失敗
                         string safeSheetName = SanitizeFileName(sheetName);
                         string outputFileName = $"{excelBaseName}_{safeSheetName}.md";
                         string outputFilePath = Path.Combine(outputDir, outputFileName);
@@ -143,6 +117,10 @@ public class ExcelConverterService : IExcelConverterService
                             ErrorMessage = $"工作表【{sheetName}】轉換失敗：{sheetEx.Message}"
                         });
                     }
+                    finally
+                    {
+                        System.Runtime.InteropServices.Marshal.ReleaseComObject(worksheet);
+                    }
                 }
 
                 return results;
@@ -157,111 +135,114 @@ public class ExcelConverterService : IExcelConverterService
                 });
                 return results;
             }
+            finally
+            {
+                if (workbook != null)
+                {
+                    workbook.Close(false);
+                    System.Runtime.InteropServices.Marshal.ReleaseComObject(workbook);
+                }
+                if (excelApp != null)
+                {
+                    excelApp.Quit();
+                    System.Runtime.InteropServices.Marshal.ReleaseComObject(excelApp);
+                }
+            }
         });
     }
 
     /// <summary>
-    /// 將單一 DataTable（對應一個工作表）的內容轉換為 GFM 標準 Markdown 表格字串。
+    /// 將單一 Excel 工作表的使用範圍轉換為 GFM 標準 Markdown 表格字串。
     /// </summary>
-    /// <remarks>
-    /// 轉換規則：
-    /// <list type="bullet">
-    /// <item>
-    ///   <term>表頭列（Header Row）</term>
-    ///   <description>
-    ///     預設以 DataTable 中索引為 0 的列（即 Excel 第一列）作為 Markdown 表頭（Header）。
-    ///     表頭列輸出後，緊接一行分隔線（由 <c>|---|</c> 組成），符合 GFM 表格語法。
-    ///   </description>
-    /// </item>
-    /// <item>
-    ///   <term>資料列（Data Rows）</term>
-    ///   <description>
-    ///     從索引 1 開始遍歷，每列輸出為一行 <c>| 欄位1 | 欄位2 | ... |</c> 格式。
-    ///   </description>
-    /// </item>
-    /// <item>
-    ///   <term>空值處理</term>
-    ///   <description>
-    ///     若儲存格（Cell）為 null 或空值，輸出空白字串（<c>" "</c>），
-    ///     確保 Markdown 表格每列欄數一致、對齊正確。
-    ///   </description>
-    /// </item>
-    /// <item>
-    ///   <term>特殊字元跳脫</term>
-    ///   <description>
-    ///     儲存格內容中若含有管線符號（<c>|</c>），需以 <c>\|</c> 跳脫，
-    ///     避免破壞 Markdown 表格結構。
-    ///   </description>
-    /// </item>
-    /// </list>
-    /// </remarks>
-    /// <param name="table">要轉換的工作表資料（DataTable）。</param>
+    /// <param name="worksheet">Excel COM Interop 的工作表物件。</param>
     /// <param name="progress">進度回報介面。</param>
     /// <returns>符合 GFM 語法的 Markdown 表格字串；若工作表無資料則傳回空字串提示。</returns>
-    private static string ConvertDataTableToMarkdown(DataTable table, IProgress<string> progress)
+    private static string ConvertWorksheetToMarkdown(
+        Microsoft.Office.Interop.Excel.Worksheet worksheet,
+        IProgress<string> progress)
     {
-        // 若工作表完全沒有列（Row），直接回傳提示文字
-        if (table.Rows.Count == 0)
+        // 取得工作表的使用範圍（UsedRange）
+        Microsoft.Office.Interop.Excel.Range usedRange = worksheet.UsedRange;
+
+        int rowCount = usedRange.Rows.Count;
+        int colCount = usedRange.Columns.Count;
+
+        // 若工作表完全沒有資料，直接回傳提示文字
+        if (rowCount == 0 || colCount == 0)
         {
-            progress.Report($"    ⚠ 工作表【{table.TableName}】無任何資料列，輸出空白提示。");
-            return $"*（工作表【{table.TableName}】無資料）*{Environment.NewLine}";
+            progress.Report($"    ⚠ 工作表【{worksheet.Name}】無任何資料列，輸出空白提示。");
+            return $"*（工作表【{worksheet.Name}】無資料）*{Environment.NewLine}";
         }
 
-        // 取得工作表的欄位數量（Column count）
-        // DataTable 的欄位數量由讀取到的最大欄數決定
-        int columnCount = table.Columns.Count;
+        // 一次讀取整個使用範圍的值到二維陣列（效能最佳化，避免逐格呼叫 COM）
+        // 若範圍只有一個儲存格，Value2 回傳單一值而非陣列，需特別處理
+        object?[,] values;
+        if (rowCount == 1 && colCount == 1)
+        {
+            values = new object?[2, 2]; // COM 陣列以 1 為起始索引
+            values[1, 1] = usedRange.Value2;
+        }
+        else
+        {
+            values = (object?[,])usedRange.Value2;
+        }
+
+        // 檢查是否所有格子都是空白
+        bool hasData = false;
+        for (int r = 1; r <= rowCount && !hasData; r++)
+            for (int c = 1; c <= colCount && !hasData; c++)
+                if (values[r, c] != null)
+                    hasData = true;
+
+        if (!hasData)
+        {
+            progress.Report($"    ⚠ 工作表【{worksheet.Name}】無任何資料列，輸出空白提示。");
+            return $"*（工作表【{worksheet.Name}】無資料）*{Environment.NewLine}";
+        }
 
         var sb = new StringBuilder();
 
-        // ── 表頭列處理 ──────────────────────────────────────────────────────
-        // 取出 DataTable 中的第一列（Row index = 0）作為 Markdown 表頭
-        DataRow headerRow = table.Rows[0];
-
-        // 逐欄讀取表頭儲存格內容，並進行特殊字元跳脫後，組成表頭行
+        // ── 表頭列處理（第 1 列）──
         sb.Append('|');
-        for (int col = 0; col < columnCount; col++)
+        for (int col = 1; col <= colCount; col++)
         {
-            // 取得儲存格值；若為 DBNull（空儲存格）則以空白字串代替，確保欄位對齊
-            string cellValue = headerRow[col] == DBNull.Value
-                ? " "
-                : EscapeMarkdownCell(headerRow[col]?.ToString() ?? " ");
-
-            sb.Append($" {cellValue} |");
+            string cellValue = FormatCellValue(values[1, col]);
+            sb.Append($" {EscapeMarkdownCell(cellValue)} |");
         }
         sb.AppendLine();
 
-        // ── 分隔線列（Separator Row）────────────────────────────────────────
-        // GFM 規範要求在表頭列與資料列之間插入分隔線，格式為 |---|---|...
+        // ── 分隔線列 ──
         sb.Append('|');
-        for (int col = 0; col < columnCount; col++)
+        for (int col = 1; col <= colCount; col++)
         {
             sb.Append("---|");
         }
         sb.AppendLine();
 
-        // ── 資料列處理 ──────────────────────────────────────────────────────
-        // 從索引 1 開始遍歷，跳過已作為表頭的第一列
-        // DataTable.Rows 是以索引存取的集合，foreach 無法直接跳過第一列，故使用 for 迴圈
-        for (int rowIdx = 1; rowIdx < table.Rows.Count; rowIdx++)
+        // ── 資料列處理（第 2 列起）──
+        for (int row = 2; row <= rowCount; row++)
         {
-            DataRow dataRow = table.Rows[rowIdx];
-
-            // 逐欄讀取每個儲存格（Cell）的值，組成 Markdown 表格的一行
             sb.Append('|');
-            for (int col = 0; col < columnCount; col++)
+            for (int col = 1; col <= colCount; col++)
             {
-                // 儲存格為 DBNull（即 Excel 空白儲存格）時，填入空白字串
-                // 確保輸出的 Markdown 表格在視覺上對齊，且符合 GFM 語法規範
-                string cellValue = dataRow[col] == DBNull.Value
-                    ? " "
-                    : EscapeMarkdownCell(dataRow[col]?.ToString() ?? " ");
-
-                sb.Append($" {cellValue} |");
+                string cellValue = FormatCellValue(values[row, col]);
+                sb.Append($" {EscapeMarkdownCell(cellValue)} |");
             }
             sb.AppendLine();
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// 將 COM Value2 傳回的儲存格值格式化為字串。
+    /// </summary>
+    /// <param name="value">儲存格值（可能為 null、double、string 等）。</param>
+    /// <returns>格式化後的字串。</returns>
+    private static string FormatCellValue(object? value)
+    {
+        if (value == null) return " ";
+        return value.ToString() ?? " ";
     }
 
     /// <summary>

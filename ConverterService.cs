@@ -3,7 +3,6 @@ using System.Text;
 using System.Text.RegularExpressions;
 using HapDoc = HtmlAgilityPack.HtmlDocument;
 using HapNode = HtmlAgilityPack.HtmlNode;
-using Mammoth;
 using ReverseMarkdown;
 using WordApp = Microsoft.Office.Interop.Word.Application;
 using WdSaveFormat = Microsoft.Office.Interop.Word.WdSaveFormat;
@@ -12,7 +11,7 @@ namespace ConvertToMarkdown;
 
 /// <summary>
 /// 轉換服務實作 - 負責將 Word (.docx / .doc) 檔案轉換為 GitHub Flavored Markdown (GFM) 格式。
-/// 轉換流程：（若為 .doc 則先透過 Word COM Interop 轉為 .docx）→ Mammoth 解析 Docx → 提取圖片 → 正規化表格 → ReverseMarkdown 產生 .md。
+/// 轉換流程：Word COM Interop 開啟文件 → 匯出為篩選後 HTML → 搬移圖片 → 正規化表格 → ReverseMarkdown 產生 .md。
 /// </summary>
 public class ConverterService : IConverterService
 {
@@ -30,19 +29,11 @@ public class ConverterService : IConverterService
         // 使用 Task.Run 將整個 I/O 密集工作移至執行緒集區，確保 UI 執行緒不被阻塞
         return await Task.Run(() =>
         {
-            string? tempDocxPath = null;
+            // 暫存 Word Interop 匯出的 HTML 檔案路徑及對應圖片子資料夾路徑
+            string? tempHtmlPath = null;
+            string? tempHtmlFilesDir = null;
             try
             {
-                // === 步驟 0（條件性）：若為 .doc 格式，透過 Word COM Interop 轉為臨時 .docx ===
-                bool isDoc = sourceFilePath.EndsWith(".doc", StringComparison.OrdinalIgnoreCase)
-                          && !sourceFilePath.EndsWith(".docx", StringComparison.OrdinalIgnoreCase);
-                if (isDoc)
-                {
-                    progress.Report("▶ [0/6] 偵測到 .doc 格式，使用 Word COM Interop 轉換為 .docx...");
-                    tempDocxPath = ConvertDocToDocx(sourceFilePath, progress);
-                    sourceFilePath = tempDocxPath;
-                }
-
                 // === 步驟 1：驗證來源檔案是否存在 ===
                 progress.Report("▶ [1/6] 驗證來源檔案...");
                 if (!File.Exists(sourceFilePath))
@@ -55,34 +46,29 @@ public class ConverterService : IConverterService
                 }
 
                 // === 步驟 2：建立輸出資料夾（依來源檔名命名） ===
-                // 在來源檔案所在目錄下建立以檔名命名的子資料夾，用於存放 .md 及圖檔
                 string sourceDir = Path.GetDirectoryName(sourceFilePath)!;
                 string fileBaseName = Path.GetFileNameWithoutExtension(sourceFilePath);
                 string outputDir = Path.Combine(sourceDir, fileBaseName);
                 Directory.CreateDirectory(outputDir);
                 progress.Report($"▶ [2/6] 輸出資料夾：{outputDir}");
 
-                // === 步驟 3：使用 Mammoth 將 Word 解析為 HTML ===
-                // Mammoth 預設會將嵌入圖片轉為 base64 資料 URI 嵌入 HTML <img> 標籤
-                progress.Report("▶ [3/6] Mammoth 解析 Word 文件中...");
-                var mammothConverter = new DocumentConverter();
-                var mammothResult = mammothConverter.ConvertToHtml(sourceFilePath);
-                string html = mammothResult.Value;
+                // === 步驟 3：透過 Word COM Interop 將文件匯出為篩選後 HTML ===
+                progress.Report("▶ [3/6] Word COM Interop 匯出 HTML 中...");
+                tempHtmlPath = ConvertWordToHtml(sourceFilePath, progress);
+                // Word 匯出 HTML 時，圖片會存放在 {檔名}_files 子資料夾中
+                tempHtmlFilesDir = Path.Combine(
+                    Path.GetDirectoryName(tempHtmlPath)!,
+                    Path.GetFileNameWithoutExtension(tempHtmlPath) + "_files");
 
-                // 輸出 Mammoth 轉換過程中產生的所有警告
-                foreach (var warning in mammothResult.Warnings)
-                    progress.Report($"  ⚠ Mammoth 警告：{warning}");
+                string html = File.ReadAllText(tempHtmlPath, Encoding.UTF8);
 
-                // === 步驟 4：從 HTML 提取 base64 圖片並儲存為獨立圖檔 ===
-                // 將 base64 資料 URI 取代為相對路徑，供 Markdown 引用
-                progress.Report("▶ [4/6] 提取並儲存圖片資源...");
+                // === 步驟 4：搬移圖片資源至輸出資料夾 ===
+                progress.Report("▶ [4/6] 搬移圖片資源...");
                 int imageCount = 0;
-                html = ExtractAndSaveImages(html, outputDir, fileBaseName, ref imageCount, progress);
-                progress.Report($"  ✔ 共提取 {imageCount} 張圖片");
+                html = MoveAndRelinkImages(html, tempHtmlFilesDir, outputDir, ref imageCount, progress);
+                progress.Report($"  ✔ 共搬移 {imageCount} 張圖片");
 
                 // === 步驟 5：正規化 HTML 表格 ===
-                // Markdown 表格語法不支援合併儲存格 (colspan/rowspan)
-                // 需先將合併儲存格展開為標準格子，再進行 Markdown 轉換
                 progress.Report("▶ [5/6] 展開表格合併儲存格...");
                 html = NormalizeTables(html, progress);
 
@@ -119,10 +105,15 @@ public class ConverterService : IConverterService
             }
             finally
             {
-                // 清除預轉產生的臨時 .docx 檔案
-                if (tempDocxPath != null && File.Exists(tempDocxPath))
+                // 清除 Word Interop 匯出的暫存 HTML 檔案及其圖片子資料夾
+                if (tempHtmlPath != null && File.Exists(tempHtmlPath))
                 {
-                    try { File.Delete(tempDocxPath); }
+                    try { File.Delete(tempHtmlPath); }
+                    catch { /* 忽略清除失敗 */ }
+                }
+                if (tempHtmlFilesDir != null && Directory.Exists(tempHtmlFilesDir))
+                {
+                    try { Directory.Delete(tempHtmlFilesDir, recursive: true); }
                     catch { /* 忽略清除失敗 */ }
                 }
             }
@@ -130,32 +121,36 @@ public class ConverterService : IConverterService
     }
 
     /// <summary>
-    /// 透過 Microsoft Word COM Interop 將 .doc 檔案轉換為臨時 .docx 檔案。
+    /// 透過 Microsoft Word COM Interop 將 .doc / .docx 檔案匯出為篩選後 HTML。
     /// 需要使用者電腦已安裝 Microsoft Word。
     /// </summary>
-    /// <param name="docPath">.doc 檔案的完整路徑。</param>
+    /// <param name="wordPath">Word 檔案的完整路徑（.doc 或 .docx）。</param>
     /// <param name="progress">進度回報介面。</param>
-    /// <returns>轉換產生的臨時 .docx 檔案路徑。</returns>
+    /// <returns>匯出的暫存 HTML 檔案路徑。</returns>
     /// <exception cref="InvalidOperationException">無法啟動 Microsoft Word 時擲出。</exception>
-    private static string ConvertDocToDocx(string docPath, IProgress<string> progress)
+    private static string ConvertWordToHtml(string wordPath, IProgress<string> progress)
     {
         WordApp? wordApp = null;
         Microsoft.Office.Interop.Word.Document? wordDoc = null;
         try
         {
             wordApp = new WordApp { Visible = false, DisplayAlerts = Microsoft.Office.Interop.Word.WdAlertLevel.wdAlertsNone };
-            wordDoc = wordApp.Documents.Open(docPath, ReadOnly: true);
+            wordDoc = wordApp.Documents.Open(wordPath, ReadOnly: true);
 
-            string tempDocxPath = Path.Combine(Path.GetTempPath(), $"{Path.GetFileNameWithoutExtension(docPath)}_{Guid.NewGuid():N}.docx");
-            wordDoc.SaveAs2(tempDocxPath, WdSaveFormat.wdFormatXMLDocument, CompatibilityMode: (int)Microsoft.Office.Interop.Word.WdCompatibilityMode.wdWord2013);
+            // 以篩選後 HTML 格式匯出，會產生較簡潔的 HTML，並將圖片存於 _files 子資料夾
+            string tempHtmlPath = Path.Combine(
+                Path.GetTempPath(),
+                $"{Path.GetFileNameWithoutExtension(wordPath)}_{Guid.NewGuid():N}.html");
 
-            progress.Report($"  ✔ .doc → .docx 轉換完成：{Path.GetFileName(tempDocxPath)}");
-            return tempDocxPath;
+            wordDoc.SaveAs2(tempHtmlPath, WdSaveFormat.wdFormatFilteredHTML);
+
+            progress.Report($"  ✔ Word → HTML 匯出完成：{Path.GetFileName(tempHtmlPath)}");
+            return tempHtmlPath;
         }
         catch (System.Runtime.InteropServices.COMException ex)
         {
             throw new InvalidOperationException(
-                $"無法啟動 Microsoft Word 進行 .doc 轉換。請確認已安裝 Microsoft Word。\n詳細錯誤：{ex.Message}", ex);
+                $"無法啟動 Microsoft Word 進行轉換。請確認已安裝 Microsoft Word。\n詳細錯誤：{ex.Message}", ex);
         }
         finally
         {
@@ -173,37 +168,87 @@ public class ConverterService : IConverterService
     }
 
     /// <summary>
-    /// 掃描 HTML 字串中所有以 base64 資料 URI 嵌入的圖片，
-    /// 將圖片二進位資料儲存為實體圖檔，並以相對路徑取代 src 屬性值。
+    /// 將 Word Interop 匯出 HTML 時產生的圖片檔案搬移至最終輸出目錄，
+    /// 並更新 HTML 中 &lt;img&gt; 標籤的 src 為以內容雜湊命名的相對路徑。
+    /// 同時處理仍以 base64 data URI 嵌入的圖片（部分版本的 Word 可能內嵌圖片）。
     /// </summary>
-    /// <param name="html">Mammoth 產生的原始 HTML 字串（含 base64 圖片）。</param>
-    /// <param name="outputDir">圖片輸出目錄的完整路徑。</param>
-    /// <param name="fileBaseName">來源 Word 檔案的主檔名（未使用於圖片命名，保留參數以供記錄）。</param>
-    /// <param name="imageCount">圖片計數器（傳址參數），函式結束後記錄已儲存的圖片總數。</param>
+    /// <param name="html">Word Interop 匯出的原始 HTML 字串。</param>
+    /// <param name="htmlFilesDir">Word 匯出 HTML 時產生的圖片子資料夾路徑。</param>
+    /// <param name="outputDir">最終輸出目錄的完整路徑。</param>
+    /// <param name="imageCount">圖片計數器（傳址參數）。</param>
     /// <param name="progress">進度回報介面。</param>
     /// <returns>圖片 src 已替換為相對路徑的 HTML 字串。</returns>
-    private static string ExtractAndSaveImages(
+    private static string MoveAndRelinkImages(
         string html,
+        string htmlFilesDir,
         string outputDir,
-        string fileBaseName,
         ref int imageCount,
         IProgress<string> progress)
     {
-        // 正規表示式比對格式：src="data:image/TYPE;base64,DATA"
-        var imagePattern = new Regex(
+        int localCount = imageCount;
+
+        // ── 處理 Word 匯出的外部圖片檔案參照 ──
+        // Word 匯出 HTML 時，<img src="XXX_files/image001.png"> 的格式
+        if (Directory.Exists(htmlFilesDir))
+        {
+            string filesDirName = Path.GetFileName(htmlFilesDir);
+            var fileRefPattern = new Regex(
+                $@"src=""(?:{Regex.Escape(filesDirName)}/|(?:\./)?{Regex.Escape(filesDirName)}/)(?<filename>[^""]+)""",
+                RegexOptions.IgnoreCase);
+
+            html = fileRefPattern.Replace(html, match =>
+            {
+                string originalFileName = match.Groups["filename"].Value;
+                string originalFilePath = Path.Combine(htmlFilesDir, originalFileName);
+
+                if (!File.Exists(originalFilePath))
+                {
+                    progress.Report($"  ⚠ 圖片檔案不存在，跳過：{originalFileName}");
+                    return match.Value;
+                }
+
+                try
+                {
+                    byte[] imageBytes = File.ReadAllBytes(originalFilePath);
+                    string hash = Convert.ToHexString(SHA256.HashData(imageBytes))[..16].ToLowerInvariant();
+                    string extension = Path.GetExtension(originalFileName).TrimStart('.').ToLowerInvariant();
+                    if (string.IsNullOrEmpty(extension)) extension = "png";
+
+                    string newFileName = $"img_{hash}.{extension}";
+                    string newFilePath = Path.Combine(outputDir, newFileName);
+
+                    if (!File.Exists(newFilePath))
+                    {
+                        File.Copy(originalFilePath, newFilePath);
+                        progress.Report($"  ✔ 圖片已搬移：{originalFileName} → {newFileName}（{imageBytes.Length:N0} bytes）");
+                    }
+                    else
+                    {
+                        progress.Report($"  ✔ 圖片已存在（重複引用）：{newFileName}");
+                    }
+
+                    localCount++;
+                    return $@"src=""{newFileName}""";
+                }
+                catch (Exception ex)
+                {
+                    progress.Report($"  ✘ 圖片搬移失敗：{originalFileName} - {ex.Message}");
+                    return match.Value;
+                }
+            });
+        }
+
+        // ── 處理可能仍以 base64 data URI 嵌入的圖片 ──
+        var base64Pattern = new Regex(
             @"src=""data:image/(?<type>[^;]+);base64,(?<data>[^""]+)""",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-        // 使用暫存變數處理 ref 參數在 Lambda 中的限制
-        int localCount = imageCount;
-
-        string result = imagePattern.Replace(html, match =>
+        html = base64Pattern.Replace(html, match =>
         {
             localCount++;
             string imageType = match.Groups["type"].Value.ToLowerInvariant();
             string base64Data = match.Groups["data"].Value;
 
-            // 根據 MIME 子類型決定圖片副檔名
             string extension = imageType switch
             {
                 "jpeg" or "jpg" => "jpg",
@@ -214,7 +259,6 @@ public class ConverterService : IConverterService
                 _               => imageType.Replace("+", "_")
             };
 
-            // 命名規則：以圖片內容 SHA256 雜湊值前 16 碼命名，確保唯一且不受來源檔名影響
             byte[] imageBytes;
             try
             {
@@ -225,13 +269,13 @@ public class ConverterService : IConverterService
                 progress.Report($"  ✘ 圖片解碼失敗（第 {localCount} 張）：{ex.Message}");
                 return match.Value;
             }
+
             string hash = Convert.ToHexString(SHA256.HashData(imageBytes))[..16].ToLowerInvariant();
             string imageFileName = $"img_{hash}.{extension}";
             string imageFilePath = Path.Combine(outputDir, imageFileName);
 
             try
             {
-                // 將圖片二進位寫入磁碟（若同雜湊圖片已存在則跳過）
                 if (!File.Exists(imageFilePath))
                 {
                     File.WriteAllBytes(imageFilePath, imageBytes);
@@ -245,16 +289,14 @@ public class ConverterService : IConverterService
             catch (Exception ex)
             {
                 progress.Report($"  ✘ 圖片儲存失敗（第 {localCount} 張）：{ex.Message}");
-                // 儲存失敗時，保留原始 base64 src，避免圖片遺失
                 return match.Value;
             }
 
-            // 以相對路徑取代 base64 資料 URI（Markdown 引用同目錄圖檔）
             return $@"src=""{imageFileName}""";
         });
 
         imageCount = localCount;
-        return result;
+        return html;
     }
 
     /// <summary>
