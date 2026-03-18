@@ -334,7 +334,7 @@ public class PowerPointConverterService : IPowerPointConverterService
     /// </summary>
     /// <param name="value">儲存格原始字串值。</param>
     /// <returns>跳脫特殊字元後的字串。</returns>
-    private static string EscapeMarkdownCell(string value)
+    internal static string EscapeMarkdownCell(string value)
     {
         if (string.IsNullOrEmpty(value)) return " ";
 

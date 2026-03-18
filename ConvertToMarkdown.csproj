@@ -12,6 +12,17 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="ConvertToMarkdown.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 排除 tests 子目錄，避免測試程式碼被主專案編譯 -->
+    <Compile Remove="tests\**\*" />
+    <EmbeddedResource Remove="tests\**\*" />
+    <None Remove="tests\**\*" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="HtmlAgilityPack" Version="1.11.72" />
     <PackageReference Include="MicrosoftOfficeCore" Version="15.0.0">
       <NoWarn>NU1701</NoWarn>
