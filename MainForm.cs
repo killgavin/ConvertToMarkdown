@@ -1,7 +1,7 @@
 namespace ConvertToMarkdown;
 
 /// <summary>
-/// 主視窗 - Word / Excel 轉 Markdown 工具的使用者介面。
+/// 主視窗 - Word / Excel / PowerPoint 轉 Markdown 工具的使用者介面。
 /// 提供「瀏覽檔案」、「開始轉換」功能及執行日誌顯示區塊。
 /// </summary>
 public partial class MainForm : Form
@@ -12,6 +12,9 @@ public partial class MainForm : Form
     /// <summary>Excel 轉換服務實例，負責處理 Excel 多工作表轉換邏輯。</summary>
     private readonly IExcelConverterService _excelConverterService;
 
+    /// <summary>PowerPoint 轉換服務實例，負責處理 PowerPoint 投影片轉換邏輯。</summary>
+    private readonly IPowerPointConverterService _powerPointConverterService;
+
     /// <summary>
     /// 初始化主視窗，並建立轉換服務實例。
     /// </summary>
@@ -20,6 +23,7 @@ public partial class MainForm : Form
         InitializeComponent();
         _converterService = new ConverterService();
         _excelConverterService = new ExcelConverterService();
+        _powerPointConverterService = new PowerPointConverterService();
     }
 
     /// <summary>
@@ -219,6 +223,91 @@ public partial class MainForm : Form
     }
 
     /// <summary>
+    /// 「瀏覽...」按鈕的點擊事件處理方法（PowerPoint）。
+    /// 開啟檔案選取對話方塊，讓使用者選取 PowerPoint (.pptx / .ppt) 檔案。
+    /// </summary>
+    private void BtnBrowsePpt_Click(object sender, EventArgs e)
+    {
+        using var dialog = new OpenFileDialog
+        {
+            Title = "選取 PowerPoint 檔案",
+            Filter = "所有 PowerPoint 文件 (*.pptx;*.ppt)|*.pptx;*.ppt|PowerPoint 簡報 (*.pptx)|*.pptx|PowerPoint 97-2003 簡報 (*.ppt)|*.ppt",
+            CheckFileExists = true
+        };
+
+        if (dialog.ShowDialog() == DialogResult.OK)
+        {
+            txtPptFilePath.Text = dialog.FileName;
+            btnConvertPpt.Enabled = true;
+            AppendLog($"已選取 PowerPoint 檔案：{dialog.FileName}");
+        }
+    }
+
+    /// <summary>
+    /// 「轉換 PowerPoint」按鈕的點擊事件處理方法（非同步）。
+    /// 驗證輸入後，呼叫 PowerPoint 轉換服務執行投影片轉 Markdown 工作。
+    /// </summary>
+    private async void BtnConvertPpt_Click(object sender, EventArgs e)
+    {
+        string sourceFilePath = txtPptFilePath.Text.Trim();
+
+        // 驗證使用者是否已選取 PowerPoint 檔案
+        if (string.IsNullOrWhiteSpace(sourceFilePath))
+        {
+            MessageBox.Show("請先選取要轉換的 PowerPoint 檔案。", "提示",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        // 驗證副檔名必須為 .pptx 或 .ppt
+        string extension = Path.GetExtension(sourceFilePath);
+        if (!extension.Equals(".pptx", StringComparison.OrdinalIgnoreCase)
+         && !extension.Equals(".ppt", StringComparison.OrdinalIgnoreCase))
+        {
+            MessageBox.Show("僅支援 .pptx 及 .ppt 格式的 PowerPoint 檔案。", "格式錯誤",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        // 轉換期間停用按鈕，避免重複觸發
+        SetControlsEnabled(false);
+        rtbLog.Clear();
+        AppendLog("═══════════════════════════════════════");
+        AppendLog("  PowerPoint 轉 Markdown 轉換工具  開始執行");
+        AppendLog("═══════════════════════════════════════");
+
+        var progress = new Progress<string>(AppendLog);
+
+        var result = await _powerPointConverterService.ConvertAsync(sourceFilePath, progress);
+
+        if (result.IsSuccess)
+        {
+            AppendLog("───────────────────────────────────────");
+            AppendLog($"✔ 轉換成功！");
+            AppendLog($"  輸出路徑：{result.OutputFilePath}");
+            AppendLog("═══════════════════════════════════════");
+            MessageBox.Show(
+                $"轉換完成！\n\n輸出路徑：\n{result.OutputFilePath}",
+                "轉換成功",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+        else
+        {
+            AppendLog("───────────────────────────────────────");
+            AppendLog($"✘ 轉換失敗：{result.ErrorMessage}");
+            AppendLog("═══════════════════════════════════════");
+            MessageBox.Show(
+                $"轉換失敗：\n{result.ErrorMessage}",
+                "轉換失敗",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
+
+        SetControlsEnabled(true);
+    }
+
+    /// <summary>
     /// 將訊息文字附加至執行日誌 RichTextBox，並自動捲動至最新行。
     /// </summary>
     /// <param name="message">要附加的日誌訊息文字。</param>
@@ -252,5 +341,8 @@ public partial class MainForm : Form
         btnBrowseExcel.Enabled = enabled;
         btnConvertExcel.Enabled = enabled;
         txtExcelFilePath.Enabled = enabled;
+        btnBrowsePpt.Enabled = enabled;
+        btnConvertPpt.Enabled = enabled;
+        txtPptFilePath.Enabled = enabled;
     }
 }

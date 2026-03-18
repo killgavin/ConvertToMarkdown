@@ -16,6 +16,10 @@ partial class MainForm
     private System.Windows.Forms.TextBox txtExcelFilePath;
     private System.Windows.Forms.Button btnBrowseExcel;
     private System.Windows.Forms.Button btnConvertExcel;
+    private System.Windows.Forms.Label lblPptFilePath;
+    private System.Windows.Forms.TextBox txtPptFilePath;
+    private System.Windows.Forms.Button btnBrowsePpt;
+    private System.Windows.Forms.Button btnConvertPpt;
     private System.Windows.Forms.Label lblLog;
     private System.Windows.Forms.RichTextBox rtbLog;
     private System.Windows.Forms.Panel panelTop;
@@ -53,6 +57,10 @@ partial class MainForm
         txtExcelFilePath = new System.Windows.Forms.TextBox();
         btnBrowseExcel   = new System.Windows.Forms.Button();
         btnConvertExcel  = new System.Windows.Forms.Button();
+        lblPptFilePath   = new System.Windows.Forms.Label();
+        txtPptFilePath   = new System.Windows.Forms.TextBox();
+        btnBrowsePpt     = new System.Windows.Forms.Button();
+        btnConvertPpt    = new System.Windows.Forms.Button();
         lblLog           = new System.Windows.Forms.Label();
         rtbLog           = new System.Windows.Forms.RichTextBox();
         panelTop         = new System.Windows.Forms.Panel();
@@ -65,7 +73,7 @@ partial class MainForm
         // ── panelTop（來源檔案選取區）─────────────────────────────────────
 
         panelTop.Dock     = System.Windows.Forms.DockStyle.Top;
-        panelTop.Height   = 200;
+        panelTop.Height   = 300;
         panelTop.Padding  = new Padding(12, 12, 12, 0);
         panelTop.Controls.Add(lblFilePath);
         panelTop.Controls.Add(txtFilePath);
@@ -75,6 +83,10 @@ partial class MainForm
         panelTop.Controls.Add(txtExcelFilePath);
         panelTop.Controls.Add(btnBrowseExcel);
         panelTop.Controls.Add(btnConvertExcel);
+        panelTop.Controls.Add(lblPptFilePath);
+        panelTop.Controls.Add(txtPptFilePath);
+        panelTop.Controls.Add(btnBrowsePpt);
+        panelTop.Controls.Add(btnConvertPpt);
 
         // lblFilePath：「來源 Word 檔案：」標籤
         lblFilePath.AutoSize = true;
@@ -138,6 +150,37 @@ partial class MainForm
         btnConvertExcel.Enabled  = false;
         btnConvertExcel.Click   += BtnConvertExcel_Click;
 
+        // lblPptFilePath：「來源 PowerPoint 檔案：」標籤
+        lblPptFilePath.AutoSize = true;
+        lblPptFilePath.Font     = new System.Drawing.Font("Microsoft JhengHei UI", 10F);
+        lblPptFilePath.Location = new System.Drawing.Point(12, 214);
+        lblPptFilePath.Text     = "來源 PowerPoint 檔案：";
+
+        // txtPptFilePath：顯示選取的 PowerPoint 檔案路徑（唯讀，由瀏覽對話方塊填入）
+        txtPptFilePath.Font      = new System.Drawing.Font("Microsoft JhengHei UI", 9F);
+        txtPptFilePath.Location  = new System.Drawing.Point(12, 238);
+        txtPptFilePath.Size      = new System.Drawing.Size(430, 23);
+        txtPptFilePath.ReadOnly  = true;
+        txtPptFilePath.BackColor = System.Drawing.SystemColors.Window;
+        txtPptFilePath.TabIndex  = 6;
+
+        // btnBrowsePpt：瀏覽並選取 PowerPoint 檔案的按鈕
+        btnBrowsePpt.Font     = new System.Drawing.Font("Microsoft JhengHei UI", 9F);
+        btnBrowsePpt.Location = new System.Drawing.Point(450, 237);
+        btnBrowsePpt.Size     = new System.Drawing.Size(80, 26);
+        btnBrowsePpt.Text     = "瀏覽...";
+        btnBrowsePpt.TabIndex = 7;
+        btnBrowsePpt.Click   += BtnBrowsePpt_Click;
+
+        // btnConvertPpt：觸發 PowerPoint 轉換流程的按鈕
+        btnConvertPpt.Font     = new System.Drawing.Font("Microsoft JhengHei UI", 10F, System.Drawing.FontStyle.Bold);
+        btnConvertPpt.Location = new System.Drawing.Point(12, 270);
+        btnConvertPpt.Size     = new System.Drawing.Size(160, 32);
+        btnConvertPpt.Text     = "轉換 PowerPoint";
+        btnConvertPpt.TabIndex = 8;
+        btnConvertPpt.Enabled  = false;
+        btnConvertPpt.Click   += BtnConvertPpt_Click;
+
         // ── panelBottom（執行日誌區）──────────────────────────────────────
 
         panelBottom.Dock    = System.Windows.Forms.DockStyle.Fill;
@@ -166,15 +209,15 @@ partial class MainForm
 
         AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
         AutoScaleMode       = System.Windows.Forms.AutoScaleMode.Font;
-        ClientSize          = new System.Drawing.Size(560, 520);
+        ClientSize          = new System.Drawing.Size(580, 620);
         Controls.Add(panelBottom);
         Controls.Add(panelTop);
         Font                = new System.Drawing.Font("Microsoft JhengHei UI", 9F);
         FormBorderStyle     = System.Windows.Forms.FormBorderStyle.FixedSingle;
         MaximizeBox         = false;
-        MinimumSize         = new System.Drawing.Size(576, 558);
+        MinimumSize         = new System.Drawing.Size(596, 658);
         Name                = "MainForm";
-        Text                = "Word / Excel 轉 Markdown 工具";
+        Text                = "Word / Excel / PowerPoint 轉 Markdown 工具";
         StartPosition       = System.Windows.Forms.FormStartPosition.CenterScreen;
 
         panelTop.ResumeLayout(false);
