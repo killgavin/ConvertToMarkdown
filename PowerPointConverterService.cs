@@ -203,7 +203,7 @@ public class PowerPointConverterService : IPowerPointConverterService
         }
         catch
         {
-            // 忽略存取錯誤
+            // COM 存取 PlaceholderFormat 可能在非預留位置圖形上擲出例外，安全忽略
         }
         return false;
     }
@@ -248,7 +248,7 @@ public class PowerPointConverterService : IPowerPointConverterService
         }
         catch
         {
-            // Shape.Export 不一定在所有版本可用，改用 Slide 匯出整張投影片作為替代方案
+            // Shape.Export 不一定在所有版本可用，匯出失敗時回報警告
         }
         finally
         {
@@ -259,7 +259,7 @@ public class PowerPointConverterService : IPowerPointConverterService
             }
         }
 
-        // 替代方案：嘗試透過剪貼簿或直接標註圖片存在
+        // 匯出失敗時標註圖片存在但無法匯出
         progress.Report($"  ⚠ 第 {imageIndex} 張圖片無法直接匯出，請手動擷取。");
         return null;
     }
