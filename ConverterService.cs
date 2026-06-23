@@ -306,7 +306,7 @@ public class ConverterService : IConverterService
     /// <param name="html">含表格的原始 HTML 字串。</param>
     /// <param name="progress">進度回報介面。</param>
     /// <returns>所有表格已展開合併儲存格的 HTML 字串。</returns>
-    private static string NormalizeTables(string html, IProgress<string> progress)
+    internal static string NormalizeTables(string html, IProgress<string> progress)
     {
         var doc = new HapDoc();
         doc.LoadHtml(html);
@@ -342,7 +342,7 @@ public class ConverterService : IConverterService
     /// </list>
     /// </remarks>
     /// <param name="tableNode">待正規化的 HtmlAgilityPack 表格節點。</param>
-    private static void FlattenTable(HapNode tableNode)
+    internal static void FlattenTable(HapNode tableNode)
     {
         // 取得表格內所有 <tr> 行節點（含 <thead>、<tbody> 下的 <tr>）
         var rows = tableNode.SelectNodes(".//tr");
@@ -427,7 +427,7 @@ public class ConverterService : IConverterService
     /// <returns>
     /// 屬性的整數值（必須大於 0）；若屬性不存在或解析失敗，則傳回預設值 <c>1</c>。
     /// </returns>
-    private static int ParseSpanAttr(HapNode node, string attrName)
+    internal static int ParseSpanAttr(HapNode node, string attrName)
     {
         string attrValue = node.GetAttributeValue(attrName, "1");
         return int.TryParse(attrValue, out int result) && result > 0 ? result : 1;

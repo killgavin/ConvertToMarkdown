@@ -239,7 +239,7 @@ public class ExcelConverterService : IExcelConverterService
     /// </summary>
     /// <param name="value">儲存格值（可能為 null、double、string 等）。</param>
     /// <returns>格式化後的字串。</returns>
-    private static string FormatCellValue(object? value)
+    internal static string FormatCellValue(object? value)
     {
         if (value == null) return " ";
         return value.ToString() ?? " ";
@@ -250,7 +250,7 @@ public class ExcelConverterService : IExcelConverterService
     /// </summary>
     /// <param name="value">儲存格原始字串值。</param>
     /// <returns>跳脫特殊字元後的字串；若輸入為空則傳回空白字串。</returns>
-    private static string EscapeMarkdownCell(string value)
+    internal static string EscapeMarkdownCell(string value)
     {
         if (string.IsNullOrEmpty(value)) return " ";
 
@@ -268,7 +268,7 @@ public class ExcelConverterService : IExcelConverterService
     /// </summary>
     /// <param name="name">原始字串（通常為工作表名稱）。</param>
     /// <returns>移除不合法字元後的安全檔案名稱；若結果為空則傳回 "Sheet"。</returns>
-    private static string SanitizeFileName(string name)
+    internal static string SanitizeFileName(string name)
     {
         // 取得系統定義的所有不合法路徑字元，並替換為底線
         char[] invalidChars = Path.GetInvalidFileNameChars();
